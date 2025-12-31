@@ -1,3 +1,22 @@
+"""
+Image Deduplication Utility (Perceptual Hashing)
+
+Purpose
+-------
+Provides a utility for identifying and removing visually duplicate images
+using perceptual hashing (pHash). The tool is intended for dataset hygiene and
+preprocessing prior to training.
+
+Supported Use Cases
+-------------------
+- YOLO-format datasets (images and labels with automatic split regeneration)
+- Plain directories containing raw image files
+
+Limitations
+-----------
+- Duplicate detection uses pairwise pHash comparisons (O(N²))
+"""
+
 import os
 import json
 from pathlib import Path
@@ -9,7 +28,7 @@ from shutil import copy2
 
 
 # ============================================================
-# Helper functions (no configuration here)
+# Helper functions 
 # ============================================================
 
 def compute_phash(path):
@@ -49,7 +68,7 @@ def show_side_by_side(group, save_path):
 
 
 # ============================================================
-# Core deduplication logic (shared by YOLO + RAW)
+# Deduplication logic (shared by YOLO + RAW)
 # ============================================================
 
 def deduplicate_images(
@@ -65,8 +84,56 @@ def deduplicate_images(
     dataset_path=None
 ):
     """
-    Generic image deduplication using perceptual hash.
-    If labels_root is provided, corresponding YOLO label files are also deleted.
+    Deduplicates a list of images using perceptual hashing (pHash).
+
+    Parameters
+    ----------
+    images : list[Path]
+        List of image file paths to process. These can come from a YOLO dataset
+        (images/train, images/val, etc.) or from a plain folder of raw images.
+
+    phash_threshold : int
+        Maximum allowed perceptual hash (pHash) distance to consider two images
+        as duplicates. Lower values are stricter (fewer false positives),
+        higher values are more tolerant to small visual changes.
+
+    dry_run : bool
+        If True, no files are deleted. The script only generates logs and
+        preview images so results can be reviewed safely.
+        If False, duplicate images (and labels if applicable) are deleted.
+
+    log_dir : str or Path
+        Directory where logs are written:
+        - dedup_report.json (full summary)
+        - kept_files.txt
+        - deleted_files.txt
+
+    preview_dir : str or Path
+        Directory where side-by-side preview images of duplicate groups
+        are saved. Each group is saved as group_X.png.
+
+    all_duplicates_dir : str or Path
+        Directory where all duplicate images (excluding the kept one)
+        are copied for manual inspection or backup.
+
+    labels_root : Path, optional
+        Path to the YOLO labels directory (dataset/labels).
+        If provided, the corresponding .txt label files for deleted images
+        are also removed. Should be None for raw image folders.
+
+    images_root : Path, optional
+        Path to the YOLO images directory (dataset/images).
+        Required only when labels_root is provided, so the script can map
+        image paths to their matching label paths.
+
+    regenerate_txt : bool, optional
+        If True, regenerates train.txt / val.txt / test.txt files after
+        deduplication. This is only relevant for YOLO datasets.
+
+    dataset_path : Path, optional
+        Root path of the YOLO dataset.
+        Required only when regenerate_txt is True, so regenerated split
+        files are written to the correct location.
     """
 
     os.makedirs(log_dir, exist_ok=True)
@@ -106,8 +173,10 @@ def deduplicate_images(
         if len(group) == 1:
             keep.append(group[0])
         else:
-            keep.append(group[0])          # keep first image
-            remove.extend(group[1:])       # remove rest
+            # Keep the first encountered image in the group.
+            # (This can be replaced with a resolution-based choice if needed.)
+            keep.append(group[0])         
+            remove.extend(group[1:])      
             duplicate_groups.append(group)
 
     # ---------------- Logging ----------------
@@ -156,6 +225,7 @@ def deduplicate_images(
         img_path.unlink(missing_ok=True)
 
         if labels_root and images_root:
+            # Map image path to its corresponding YOLO label file
             lbl_path = labels_root / img_path.relative_to(images_root)
             lbl_path = lbl_path.with_suffix(".txt")
             lbl_path.unlink(missing_ok=True)
@@ -208,52 +278,87 @@ def deduplicate_raw_images(folder_path, **kwargs):
         **kwargs
     )
 
+def run_deduplication(
+    mode,
+    yolo_dataset_path,
+    raw_images_path,
+    phash_threshold,
+    dry_run,
+    log_dir,
+    preview_dir,
+    all_duplicates_dir
+):
+    """
+    Executes deduplication based on selected mode.
 
-# ============================================================
-# Example Usage (ALL CONFIGURATION IS HERE)
-# ============================================================
+    This function contains all execution logic so `main` stays
+    clean and configuration-only.
+    """
 
-if __name__ == "__main__":
+    if mode == "yolo":
+        if not yolo_dataset_path:
+            raise ValueError("YOLO_DATASET_PATH must be set for YOLO mode")
 
-    # -------- Select mode --------
-    # Use "yolo" for YOLO datasets or "raw" for plain image folders
-    MODE = "raw"
-
-    # -------- Paths --------
-    YOLO_DATASET_PATH = r"D:\Datasets\my_yolo_dataset"
-    RAW_IMAGES_PATH = r"D:\Datasets\raw_images"
-
-    # -------- Deduplication settings --------
-    PHASH_THRESHOLD = 6     # lower = stricter duplicate detection
-    DRY_RUN = True          # True = preview only, False = delete files
-
-    # -------- Output directories --------
-    LOG_DIR = "dedup_logs"
-    PREVIEW_DIR = "duplicate_previews"
-    ALL_DUPLICATES_DIR = "all_duplicates"
-
-    # -------- Run --------
-    if MODE == "yolo":
         deduplicate_yolo_dataset(
-            dataset_path=YOLO_DATASET_PATH,
-            phash_threshold=PHASH_THRESHOLD,
-            dry_run=DRY_RUN,
-            log_dir=LOG_DIR,
-            preview_dir=PREVIEW_DIR,
-            all_duplicates_dir=ALL_DUPLICATES_DIR
+            dataset_path=yolo_dataset_path,
+            phash_threshold=phash_threshold,
+            dry_run=dry_run,
+            log_dir=log_dir,
+            preview_dir=preview_dir,
+            all_duplicates_dir=all_duplicates_dir
         )
 
-    elif MODE == "raw":
+    elif mode == "raw":
+        if not raw_images_path:
+            raise ValueError("RAW_IMAGES_PATH must be set for RAW mode")
+
         deduplicate_raw_images(
-            folder_path=RAW_IMAGES_PATH,
-            phash_threshold=PHASH_THRESHOLD,
-            dry_run=DRY_RUN,
-            log_dir=LOG_DIR,
-            preview_dir=PREVIEW_DIR,
-            all_duplicates_dir=ALL_DUPLICATES_DIR
+            folder_path=raw_images_path,
+            phash_threshold=phash_threshold,
+            dry_run=dry_run,
+            log_dir=log_dir,
+            preview_dir=preview_dir,
+            all_duplicates_dir=all_duplicates_dir
         )
 
     else:
         raise ValueError("MODE must be either 'yolo' or 'raw'")
 
+# ============================================================
+# Example Usage 
+# ============================================================
+
+if __name__ == "__main__":
+    # ========================================================
+    # CONFIGURATION (EDIT ONLY THIS SECTION)
+    # ========================================================
+
+    MODE = "raw"  # "yolo" or "raw"
+
+    YOLO_DATASET_PATH = r"D:\Datasets\my_yolo_dataset" # Set this, if MODE = "yolo"
+    RAW_IMAGES_PATH = r"D:\Datasets\raw_images" # Set this, if MODE = "raw"
+
+    PHASH_THRESHOLD = 6
+    DRY_RUN = True
+
+    LOG_DIR = "dedup_logs"
+    PREVIEW_DIR = "duplicate_previews"
+    ALL_DUPLICATES_DIR = "all_duplicates"
+
+    # ========================================================
+    # EXECUTION (DO NOT MODIFY)
+    # ========================================================
+
+    run_deduplication(
+        mode=MODE,
+        yolo_dataset_path=YOLO_DATASET_PATH,
+        raw_images_path=RAW_IMAGES_PATH,
+        phash_threshold=PHASH_THRESHOLD,
+        dry_run=DRY_RUN,
+        log_dir=LOG_DIR,
+        preview_dir=PREVIEW_DIR,
+        all_duplicates_dir=ALL_DUPLICATES_DIR
+    )
+
     print("Deduplication process completed.")
+
