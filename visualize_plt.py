@@ -1,11 +1,12 @@
 """
 Interactive Dataset Reviewer (Matplotlib Version)
 - Shows N random images per batch in a grid gallery
-- Uses Datumaro's Visualizer for annotations
+- Robust rendering: handles Datumaro render_item, raw image file, or in-memory data
 - Fully interactive with Next/Quit buttons
 """
 
 import numpy as np
+import cv2
 from datumaro.components.dataset import Dataset
 from datumaro.components.visualizer import Visualizer
 import matplotlib.pyplot as plt
@@ -82,12 +83,37 @@ class DatasetReviewer:
 
         for i, (item, ax) in enumerate(zip(selected_items, self.axs)):
             try:
-                img_array = self.viz.render_item(item)  # RGB numpy array
-                if img_array is None:
-                    raise ValueError("Visualizer returned None")
-                ax.imshow(img_array)
-                ax.set_title(f"Item {i}")
-                ax.axis('off')
+                # 1️⃣ Try Datumaro visualizer
+                img_array = self.viz.render_item(item)
+                if img_array is not None:
+                    ax.imshow(img_array)
+                    ax.set_title(f"Item {i}")
+                    ax.axis('off')
+                    continue
+
+                # 2️⃣ Fallback: raw image from disk
+                if hasattr(item, "image") and item.image is not None:
+                    if hasattr(item.image, "path"):
+                        img_path = item.image.path
+                        img_cv = cv2.imread(img_path)
+                        if img_cv is not None:
+                            img_rgb = cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB)
+                            ax.imshow(img_rgb)
+                            ax.set_title(f"Item {i} (raw)")
+                            ax.axis('off')
+                            continue
+
+                    # 3️⃣ Fallback: in-memory image data
+                    if hasattr(item.image, "data") and item.image.data is not None:
+                        ax.imshow(item.image.data)
+                        ax.set_title(f"Item {i} (memory)")
+                        ax.axis('off')
+                        continue
+
+                # 4️⃣ Final fallback: black placeholder
+                ax.imshow(np.zeros((300, 400, 3), dtype=np.uint8))
+                ax.set_title(f"Item {i} (empty)")
+
             except Exception:
                 ax.text(0.5, 0.5, "Failed to load",
                         ha='center', va='center', transform=ax.transAxes)
