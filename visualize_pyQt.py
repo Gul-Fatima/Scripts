@@ -1,33 +1,17 @@
 """
-Dataset Visualization & Review Tool (PyQt Version)
+Dataset Visualization & Review Tool (PyQt5 Version)
 
 Purpose:
 --------
 A professional-grade desktop application for reviewing annotated datasets.
 Designed for smooth UX, clean window handling, and future extensibility.
 
-Key Features:
--------------
-- Multi-image grid display.
-- GUI buttons + keyboard shortcuts.
-- Single persistent window.
-- Graceful application shutdown.
-- Extendable architecture for filters, tagging, and logging.
-
-Usage:
-------
-python visualize_pyqt.py
-
 Dependencies:
 -------------
-- PyQt5 or PySide6
+- PyQt5
 - datumaro
 - numpy
 - Pillow
-
-Author:
--------
-<Your Name / Team>
 """
 
 import sys
@@ -36,21 +20,12 @@ from PIL import Image
 from datumaro.components.dataset import Dataset
 from datumaro.components.visualizer import Visualizer
 
-# Try PyQt5 first, fallback to PySide6
-try:
-    from PyQt5.QtWidgets import (
-        QApplication, QMainWindow, QWidget, QLabel, QPushButton,
-        QVBoxLayout, QHBoxLayout, QGridLayout
-    )
-    from PyQt5.QtGui import QPixmap, QImage
-    from PyQt5.QtCore import Qt
-except ImportError:
-    from PySide6.QtWidgets import (
-        QApplication, QMainWindow, QWidget, QLabel, QPushButton,
-        QVBoxLayout, QHBoxLayout, QGridLayout
-    )
-    from PySide6.QtGui import QPixmap, QImage
-    from PySide6.QtCore import Qt
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QLabel, QPushButton,
+    QVBoxLayout, QHBoxLayout, QGridLayout
+)
+from PyQt5.QtGui import QPixmap, QImage
+from PyQt5.QtCore import Qt
 
 
 # ============================================================
@@ -58,9 +33,7 @@ except ImportError:
 # ============================================================
 
 class DatasetManager:
-    """
-    Responsible for loading the dataset and sampling batches.
-    """
+    """Responsible for loading the dataset and sampling batches."""
 
     def __init__(self, dataset_path: str, dataset_format: str, images_per_batch: int):
         self.dataset = Dataset.import_from(dataset_path, dataset_format)
@@ -79,14 +52,10 @@ class DatasetManager:
 # ============================================================
 
 class ReviewerWindow(QMainWindow):
-    """
-    Main application window.
-    Handles UI layout, user interactions, and dataset rendering.
-    """
+    """Main application window."""
 
     def __init__(self, dataset_manager: DatasetManager, window_title: str):
         super().__init__()
-
         self.manager = dataset_manager
         self.setWindowTitle(window_title)
         self.setMinimumSize(1000, 700)
@@ -98,7 +67,6 @@ class ReviewerWindow(QMainWindow):
         """Initialize all UI components and layouts."""
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-
         self.main_layout = QVBoxLayout()
         central_widget.setLayout(self.main_layout)
 
@@ -117,25 +85,13 @@ class ReviewerWindow(QMainWindow):
                 self.image_labels.append(label)
 
         # Control buttons
-        self._init_controls()
-
-    def _init_controls(self):
-        """Initialize control buttons and bind actions."""
         controls_layout = QHBoxLayout()
-
-        self.prev_btn = QPushButton("⬅ Prev")
         self.shuffle_btn = QPushButton("🔀 Reshuffle")
-        self.next_btn = QPushButton("Next ➡")
         self.quit_btn = QPushButton("❌ Quit")
-
-        self.prev_btn.clicked.connect(self.load_new_batch)
         self.shuffle_btn.clicked.connect(self.load_new_batch)
-        self.next_btn.clicked.connect(self.load_new_batch)
         self.quit_btn.clicked.connect(self.close)
-
-        for btn in [self.prev_btn, self.shuffle_btn, self.next_btn, self.quit_btn]:
+        for btn in [self.shuffle_btn, self.quit_btn]:
             controls_layout.addWidget(btn)
-
         self.main_layout.addLayout(controls_layout)
 
     # ========================================================
@@ -148,19 +104,12 @@ class ReviewerWindow(QMainWindow):
         self._render_items(items)
 
     def _render_items(self, items):
-        """
-        Render dataset items into the grid.
-        Converts Datumaro-rendered images into Qt-compatible images.
-        """
-        # Clear previous images
+        """Render dataset items into the grid."""
         for label in self.image_labels:
             label.clear()
             label.setText("")
 
-        # Use Datumaro visualizer to render items
         figure = self.manager.visualizer.vis_gallery(items)
-
-        # Convert Matplotlib figure to raw image
         figure.canvas.draw()
         width, height = figure.canvas.get_width_height()
         img = np.frombuffer(figure.canvas.tostring_rgb(), dtype=np.uint8)
@@ -170,7 +119,6 @@ class ReviewerWindow(QMainWindow):
         qt_image = self._pil_to_qimage(image)
         pixmap = QPixmap.fromImage(qt_image)
 
-        # Display same rendered grid in all slots (simpler, faster)
         for label in self.image_labels:
             label.setPixmap(
                 pixmap.scaled(
@@ -180,6 +128,8 @@ class ReviewerWindow(QMainWindow):
                     Qt.SmoothTransformation
                 )
             )
+
+        figure.clf()  # Clear figure to avoid memory leaks
 
     @staticmethod
     def _pil_to_qimage(pil_image: Image.Image) -> QImage:
@@ -194,16 +144,8 @@ class ReviewerWindow(QMainWindow):
     # ========================================================
 
     def keyPressEvent(self, event):
-        """
-        Keyboard shortcuts for fast navigation.
-
-        n / N      -> Next batch
-        r / R      -> Reshuffle
-        q / Esc    -> Quit
-        """
-        if event.key() in (Qt.Key_N,):
-            self.load_new_batch()
-        elif event.key() in (Qt.Key_R,):
+        """Keyboard shortcuts: n/r = next batch, q/Esc = quit."""
+        if event.key() in (Qt.Key_N, Qt.Key_R):
             self.load_new_batch()
         elif event.key() in (Qt.Key_Q, Qt.Key_Escape):
             self.close()
@@ -216,34 +158,13 @@ class ReviewerWindow(QMainWindow):
 # ============================================================
 
 if __name__ == "__main__":
-    """
-    Application entry point.
-    All configuration parameters are defined here.
-    """
-
-    # ---------------- CONFIGURATION ----------------
-
     DATASET_PATH = "/mnt/Training/MLTraining/Projects/Script_testing/phash4/yolo/Potholes"
     DATASET_FORMAT = "yolo"
     IMAGES_PER_BATCH = 4
     WINDOW_TITLE = "Dataset Reviewer - YOLO Annotations"
 
-    # ------------------------------------------------
-    # DON'T MODIFY
-    # ------------------------------------------------
-
     app = QApplication(sys.argv)
-
-    dataset_manager = DatasetManager(
-        dataset_path=DATASET_PATH,
-        dataset_format=DATASET_FORMAT,
-        images_per_batch=IMAGES_PER_BATCH
-    )
-
-    window = ReviewerWindow(
-        dataset_manager=dataset_manager,
-        window_title=WINDOW_TITLE
-    )
+    dataset_manager = DatasetManager(DATASET_PATH, DATASET_FORMAT, IMAGES_PER_BATCH)
+    window = ReviewerWindow(dataset_manager, WINDOW_TITLE)
     window.show()
-
     sys.exit(app.exec_())
