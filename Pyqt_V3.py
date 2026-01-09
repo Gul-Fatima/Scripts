@@ -57,23 +57,14 @@ class RenderThread(QThread):
 
             for idx, item in enumerate(self.items):
                 try:
-                    # Render item individually
-                    fig, ax = plt.subplots(figsize=(6, 4))
-                    self.visualizer.draw_item(item, ax)
-                    ax.axis('off')
-                    fig.tight_layout(pad=0)
-
-                    # Convert to PIL safely
-                    fig.canvas.draw()
-                    w, h = fig.canvas.get_width_height()
-                    img_array = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
-                    img_array = img_array.reshape(h, w, 4)[:, :, :3]  # RGB only
-
+                    # Datumaro can render item to numpy array directly
+                    img_array = self.visualizer.render_item(item)  # shape (H, W, 3) RGB
+                    if img_array is None:
+                        raise ValueError("Visualizer returned None")
                     pil_img = Image.fromarray(img_array)
                     images.append(pil_img)
-                    plt.close(fig)
                 except Exception as e:
-                    # fallback: try to use raw image
+                    # fallback: try raw image
                     try:
                         if hasattr(item, 'image') and item.image is not None:
                             if hasattr(item.image, 'data'):
@@ -99,7 +90,6 @@ class RenderThread(QThread):
         except Exception as e:
             import traceback
             self.error.emit(f"Rendering failed: {str(e)}\n{traceback.format_exc()}")
-
 
 # ============================================================
 # MAIN WINDOW - SIMPLE
