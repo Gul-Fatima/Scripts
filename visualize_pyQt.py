@@ -104,32 +104,39 @@ class ReviewerWindow(QMainWindow):
         self._render_items(items)
 
     def _render_items(self, items):
-        """Render dataset items into the grid."""
-        for label in self.image_labels:
-            label.clear()
-            label.setText("")
+    for idx, item in enumerate(items):
+        if idx >= len(self.image_labels):
+            break
 
-        figure = self.manager.visualizer.vis_gallery(items)
+        # Visualize one item
+        figure = self.manager.visualizer.vis_item(item)
         figure.canvas.draw()
         width, height = figure.canvas.get_width_height()
         img = np.frombuffer(figure.canvas.tostring_rgb(), dtype=np.uint8)
         img = img.reshape(height, width, 3)
 
+        # Convert to QPixmap
         image = Image.fromarray(img)
         qt_image = self._pil_to_qimage(image)
         pixmap = QPixmap.fromImage(qt_image)
 
-        for label in self.image_labels:
-            label.setPixmap(
-                pixmap.scaled(
-                    label.width(),
-                    label.height(),
-                    Qt.KeepAspectRatio,
-                    Qt.SmoothTransformation
-                )
+        # Assign to the correct label
+        label = self.image_labels[idx]
+        label.setPixmap(
+            pixmap.scaled(
+                label.width(),
+                label.height(),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
             )
+        )
 
-        figure.clf()  # Clear figure to avoid memory leaks
+        figure.clf()  # Clear figure to prevent memory leak
+
+    # Clear remaining labels if fewer items
+    for idx in range(len(items), len(self.image_labels)):
+        self.image_labels[idx].clear()
+        self.image_labels[idx].setText("No Image")
 
     @staticmethod
     def _pil_to_qimage(pil_image: Image.Image) -> QImage:
